@@ -14,6 +14,7 @@ from tkinter import filedialog, messagebox, ttk
 from pdf_to_md import ConversionResult, convert_folder, find_pdfs
 
 APP_TITLE = "Bulk PDF to MD Creator"
+ASSETS_DIR = Path(__file__).resolve().parent / "assets"
 
 
 class App(tk.Tk):
@@ -22,11 +23,13 @@ class App(tk.Tk):
         self.title(APP_TITLE)
         self.geometry("640x480")
         self.minsize(560, 400)
+        self._set_window_icon()
 
         self.source_folder = tk.StringVar()
         self.output_subfolder = tk.StringVar(value="markdown")
         self.recursive = tk.BooleanVar(value=True)
         self.preserve_structure = tk.BooleanVar(value=True)
+        self.delete_source = tk.BooleanVar(value=True)
         self.status_text = tk.StringVar(value="Select a folder to begin.")
 
         self._queue: queue.Queue = queue.Queue()
@@ -45,6 +48,7 @@ class App(tk.Tk):
         entry = ttk.Entry(folder_frame, textvariable=self.source_folder)
         entry.pack(side="left", fill="x", expand=True, padx=(6, 6))
         ttk.Button(folder_frame, text="Browse...", command=self._browse_folder).pack(side="left")
+        ttk.Button(folder_frame, text="Refresh", command=self._refresh).pack(side="left", padx=(6, 0))
 
         options_frame = ttk.Frame(self)
         options_frame.pack(fill="x", **pad)
@@ -60,6 +64,11 @@ class App(tk.Tk):
             options_frame,
             text="Preserve folder structure in output",
             variable=self.preserve_structure,
+        ).pack(side="left", padx=(0, 20))
+        ttk.Checkbutton(
+            options_frame,
+            text="Delete original PDF after conversion",
+            variable=self.delete_source,
         ).pack(side="left")
 
         action_frame = ttk.Frame(self)
@@ -81,11 +90,33 @@ class App(tk.Tk):
         self.log.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
 
+    def _set_window_icon(self) -> None:
+        ico_path = ASSETS_DIR / "icon.ico"
+        png_path = ASSETS_DIR / "icon.png"
+        if ico_path.exists():
+            try:
+                self.iconbitmap(str(ico_path))
+                return
+            except tk.TclError:
+                pass  # .ico icons aren't supported by Tk on this platform (e.g. Linux)
+        if png_path.exists():
+            try:
+                self.iconphoto(True, tk.PhotoImage(file=str(png_path)))
+            except tk.TclError:
+                pass
+
     def _browse_folder(self) -> None:
         folder = filedialog.askdirectory(title="Select folder containing PDFs")
         if folder:
             self.source_folder.set(folder)
             self._refresh_pdf_count(folder)
+
+    def _refresh(self) -> None:
+        folder = self.source_folder.get().strip()
+        if not folder or not Path(folder).is_dir():
+            messagebox.showerror(APP_TITLE, "Please select a valid folder first.")
+            return
+        self._refresh_pdf_count(folder)
 
     def _refresh_pdf_count(self, folder: str) -> None:
         try:
@@ -120,13 +151,24 @@ class App(tk.Tk):
 
         self._worker = threading.Thread(
             target=self._run_conversion,
-            args=(folder, subfolder_name, self.recursive.get(), self.preserve_structure.get()),
+            args=(
+                folder,
+                subfolder_name,
+                self.recursive.get(),
+                self.preserve_structure.get(),
+                self.delete_source.get(),
+            ),
             daemon=True,
         )
         self._worker.start()
 
     def _run_conversion(
-        self, folder: str, subfolder_name: str, recursive: bool, preserve_structure: bool
+        self,
+        folder: str,
+        subfolder_name: str,
+        recursive: bool,
+        preserve_structure: bool,
+        delete_source: bool,
     ) -> None:
         def on_progress(done: int, total: int, result: ConversionResult) -> None:
             self._queue.put(("progress", done, total, result))
@@ -137,6 +179,7 @@ class App(tk.Tk):
                 output_subfolder_name=subfolder_name,
                 recursive=recursive,
                 preserve_structure=preserve_structure,
+                delete_source=delete_source,
                 progress_callback=on_progress,
             )
             self._queue.put(("done", output_root, results))
@@ -152,7 +195,12 @@ class App(tk.Tk):
                     _, done, total, result = item
                     self.progress.configure(maximum=max(total, 1), value=done)
                     if result.ok:
-                        self._log(f"[OK] {result.source.name} -> {result.output.name}")
+                        msg = f"[OK] {result.source.name} -> {result.output.name}"
+                        if result.deleted_source:
+                            msg += " (original PDF deleted)"
+                        elif result.delete_error:
+                            msg += f" (could not delete original: {result.delete_error})"
+                        self._log(msg)
                     else:
                         self._log(f"[FAIL] {result.source.name}: {result.error}")
                     self.status_text.set(f"Converting... ({done}/{total})")
