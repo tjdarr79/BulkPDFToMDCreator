@@ -14,6 +14,8 @@ class ConversionResult:
     output: Path | None
     ok: bool
     error: str = ""
+    deleted_source: bool = False
+    delete_error: str = ""
 
 
 def find_pdfs(root: Path, recursive: bool) -> list[Path]:
@@ -26,6 +28,7 @@ def convert_pdf(
     source_root: Path,
     output_root: Path,
     preserve_structure: bool,
+    delete_source: bool = False,
 ) -> ConversionResult:
     try:
         if preserve_structure:
@@ -38,9 +41,18 @@ def convert_pdf(
         md_text = pymupdf4llm.to_markdown(str(pdf_path))
         out_path = target_dir / (pdf_path.stem + ".md")
         out_path.write_text(md_text, encoding="utf-8")
-        return ConversionResult(source=pdf_path, output=out_path, ok=True)
+        result = ConversionResult(source=pdf_path, output=out_path, ok=True)
     except Exception as exc:  # noqa: BLE001 - report per-file, keep batch going
         return ConversionResult(source=pdf_path, output=None, ok=False, error=str(exc))
+
+    if delete_source:
+        try:
+            pdf_path.unlink()
+            result.deleted_source = True
+        except OSError as exc:
+            result.delete_error = str(exc)
+
+    return result
 
 
 def convert_folder(
@@ -48,9 +60,13 @@ def convert_folder(
     output_subfolder_name: str = "markdown",
     recursive: bool = True,
     preserve_structure: bool = True,
+    delete_source: bool = False,
     progress_callback: Callable[[int, int, ConversionResult], None] | None = None,
 ) -> tuple[Path, list[ConversionResult]]:
     """Convert every PDF under source_folder to a .md file under a new subfolder.
+
+    If delete_source is True, each PDF is removed after its .md file is
+    written successfully (a PDF that fails to convert is left in place).
 
     Returns (output_root, results).
     """
@@ -66,7 +82,7 @@ def convert_folder(
     results: list[ConversionResult] = []
     total = len(pdfs)
     for i, pdf_path in enumerate(pdfs, start=1):
-        result = convert_pdf(pdf_path, source_root, output_root, preserve_structure)
+        result = convert_pdf(pdf_path, source_root, output_root, preserve_structure, delete_source)
         results.append(result)
         if progress_callback:
             progress_callback(i, total, result)

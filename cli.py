@@ -25,10 +25,19 @@ def main() -> int:
         action="store_true",
         help="Put all .md files directly in the output folder instead of mirroring subfolders",
     )
+    parser.add_argument(
+        "--delete-source",
+        action="store_true",
+        help="Delete each PDF after it has been converted successfully",
+    )
     args = parser.parse_args()
 
     def on_progress(done, total, result):
         status = "OK" if result.ok else f"FAIL ({result.error})"
+        if result.ok and result.deleted_source:
+            status += ", source deleted"
+        elif result.ok and result.delete_error:
+            status += f", delete failed ({result.delete_error})"
         print(f"[{done}/{total}] {result.source.name}: {status}")
 
     output_root, results = convert_folder(
@@ -36,6 +45,7 @@ def main() -> int:
         output_subfolder_name=args.output_name,
         recursive=not args.no_recursive,
         preserve_structure=not args.flatten,
+        delete_source=args.delete_source,
         progress_callback=on_progress,
     )
 
