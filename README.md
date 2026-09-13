@@ -48,7 +48,9 @@ Converted `.md` files are written into a new subfolder inside the selected
 folder (default name: `markdown`). That output subfolder is automatically
 skipped on re-runs so it's never scanned as a source. A PDF is only deleted
 after its `.md` file has been written successfully — a failed conversion
-always leaves the original PDF in place.
+always leaves the original PDF in place. The PDF count also updates
+automatically (logged as "PDF(s) remaining in source folder") once a batch
+finishes, so you can see at a glance whether anything was left behind.
 
 ## Run (CLI, for scripting/automation)
 
@@ -68,9 +70,17 @@ for per-file errors).
 
 ## Notes
 
-- Conversion uses `pymupdf4llm`, which extracts text, tables, and basic
-  layout into Markdown. Scanned/image-only PDFs (no embedded text layer)
-  will produce empty or near-empty output — OCR is not included.
+- Conversion uses `pymupdf4llm`, which already preserves the structure most
+  users care about by default:
+  - **Headers** are detected from font size/weight and mapped to Markdown
+    `#`/`##`/etc. headings.
+  - **Multi-column layouts** are reordered into correct reading order
+    (column one fully, then column two) rather than interleaved line-by-line.
+  - **Tables** — both ruled (bordered) and borderless/aligned — are converted
+    to Markdown tables.
+  - Scanned/image-only PDFs (no embedded text layer) are the one case this
+    can't handle: there's no text to extract, so output will be empty or
+    near-empty. OCR is not included.
 - Failed files are logged individually and do not stop the batch.
 - Deleting the original PDF is permanent (no recycle bin/trash) — leave the
   "Delete original PDF" box unchecked (GUI) or omit `--delete-source` (CLI)

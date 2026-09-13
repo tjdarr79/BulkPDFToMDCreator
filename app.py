@@ -118,12 +118,16 @@ class App(tk.Tk):
             return
         self._refresh_pdf_count(folder)
 
-    def _refresh_pdf_count(self, folder: str) -> None:
+    def _count_pdfs(self, folder: str) -> int | None:
         try:
-            count = len(find_pdfs(Path(folder), self.recursive.get()))
+            return len(find_pdfs(Path(folder), self.recursive.get()))
+        except OSError:
+            return None
+
+    def _refresh_pdf_count(self, folder: str) -> None:
+        count = self._count_pdfs(folder)
+        if count is not None:
             self.status_text.set(f"{count} PDF(s) found in selected folder.")
-        except Exception:
-            pass
 
     def _log(self, message: str) -> None:
         self.log.configure(state="normal")
@@ -213,6 +217,9 @@ class App(tk.Tk):
                         f"Output: {output_root}"
                     )
                     self.convert_button.configure(state="normal")
+                    remaining = self._count_pdfs(self.source_folder.get())
+                    if remaining is not None:
+                        self._log(f"[INFO] {remaining} PDF(s) remaining in source folder.")
                     if not results:
                         messagebox.showinfo(APP_TITLE, "No PDF files found in the selected folder.")
                 elif kind == "error":
