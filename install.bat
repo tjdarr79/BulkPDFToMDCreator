@@ -54,16 +54,17 @@ echo Found Python:
 echo.
 
 REM --- 2. Create virtual environment ---------------------------------------
-if not exist "venv\Scripts\python.exe" (
+if exist "venv\Scripts\python.exe" (
+    echo Virtual environment already exists, skipping creation.
+) else (
     echo Creating virtual environment...
     %PY_CMD% -m venv venv
-    if %errorlevel% neq 0 (
-        echo Failed to create the virtual environment.
-        pause
-        exit /b 1
-    )
-) else (
-    echo Virtual environment already exists, skipping creation.
+)
+
+if not exist "venv\Scripts\python.exe" (
+    echo Failed to create the virtual environment.
+    pause
+    exit /b 1
 )
 
 REM --- 3. Install dependencies ----------------------------------------------
